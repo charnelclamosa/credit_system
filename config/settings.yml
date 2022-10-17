@@ -1,4 +1,4 @@
 plugins:
-  plugin_name_enabled:
+  credit_system_enabled:
     default: true
     client: true
