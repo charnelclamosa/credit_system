@@ -5,9 +5,19 @@ module KarotaCredits
 	CREDIT_BALANCE_COL = 'credit_balance'
 
 	class CreditsController < ActionController::API
+		before_action :authenticate_api_key
 	
 		def index
 			head 200
+		end
+
+		##
+		# Authenticate the 'Api-Key' in the HTTP header
+		def authenticate_api_key
+			raise Discourse::InvalidAccess unless request.headers["Api-Key"]
+			@hashed_api_key = ApiKey.hash_key(request.headers["Api-Key"])
+			api_key_record = ApiKey.find_by(key_hash: @hashed_api_key)
+			raise Discourse::InvalidAccess unless api_key_record
 		end
 
 		##
