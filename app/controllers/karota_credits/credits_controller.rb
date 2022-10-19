@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 module KarotaCredits
-
+	
   CREDIT_BALANCE_COL = 'credit_balance'
 
   class CreditsController < ActionController::API
@@ -22,9 +22,7 @@ module KarotaCredits
     ##
     # Returns the mean of the credit balance of all users.
     def get_credits_mean
-      credits_mean = UserCustomField
-        .where(name: CREDIT_BALANCE_COL)
-        .average("value::float")
+      credits_mean = UserCustomField.where(name: CREDIT_BALANCE_COL).average("value::float")
       render json: credits_mean
 		end
 
