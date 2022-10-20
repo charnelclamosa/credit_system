@@ -75,11 +75,14 @@ module KarotaCredits
     # - Find users with credit balance
     # - Compute the gained rewards of each user
     # - Add the gained rewards to the credit balance of each user
+    # API parameters:
+    # +amount+:: Amount that will be used in the formula for calculating the reward. Required.
+    # +date+:: Date that will be used for looking up the user's activity.
     def gift_rewards
       params.require(:amount)
 
       amount = params[:amount].to_f
-      date = params[:date] ||= DateTime.now.strftime('%Y-%m-%d')
+      date = params[:date] ||= (DateTime.now - 1.day).strftime('%Y-%m-%d')
 
       ucf_credit_records = get_user_ids_with_credits
       ucf_credit_records.each do |record|
