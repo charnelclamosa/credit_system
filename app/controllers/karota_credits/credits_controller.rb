@@ -3,6 +3,7 @@ module KarotaCredits
 
   CREDIT_BALANCE_COL = 'credit_balance'
   MAX_CREDIT_BALANCE = 100
+  BEGINNING = '2022-01-01'
 
   class CreditsController < ActionController::API
     # This API class is responsible for adding and gifting credits
@@ -82,7 +83,7 @@ module KarotaCredits
       params.require(:amount)
 
       amount = params[:amount].to_f
-      date = params[:date] ||= (DateTime.now - 1.day).strftime('%Y-%m-%d')
+      date = params[:date] ||= DateTime.now.strftime('%Y-%m-%d')
 
       ucf_credit_records = get_user_ids_with_credits
       ucf_credit_records.each do |record|
@@ -106,18 +107,19 @@ module KarotaCredits
     end
 
     # Get the polarity of the post content. 
-    # Currently, we are using the `like_score` column
-    # of the `posts` table to determine the polarity of the post.
+    # Returns 0 temporarily while the 'Discourse Reactions' plugin
+    # is not yet implemented.
     # Params:
     # +user_id+:: User id of the post creator.
     def get_post_polarization_score(user_id)
-      sql = <<~SQL
-        SELECT AVG(ABS(like_score)) mean_score from posts
-        WHERE user_id = :user_id
-      SQL
-      scores = DB.query(sql, user_id: user_id)
-      return 0 if scores[0].mean_score.nil?
-      scores[0].mean_score
+      # sql = <<~SQL
+      #   SELECT AVG(ABS(like_score)) mean_score from posts
+      #   WHERE user_id = :user_id
+      # SQL
+      # scores = DB.query(sql, user_id: user_id)
+      # return 0 if scores[0].mean_score.nil?
+      # scores[0].mean_score
+      0
     end
 
     # Get the total created post of a user on a specific date.
@@ -138,17 +140,38 @@ module KarotaCredits
       return 0
     end
 
-    # Get the total received likes of post(s) of a post creator
-    # on a specific date.
+    # Get the new gained likes of the user based on the number of likes
+    # of created posts.
     def get_new_likes_received(user_id, date)
-      sql = <<~SQL
+      today = date
+      yesterday = date.to_date - 1.day
+      sql_yesterday = <<~SQL
         SELECT SUM(like_count) total_likes from posts
-        WHERE created_at::DATE = :created_at
+        WHERE created_at BETWEEN :beginning AND  :yesterday
         AND user_id = :user_id
       SQL
-      total_likes = DB.query(sql, created_at: date, user_id: user_id)
-      return 0 if total_likes[0].total_likes.nil?
-      total_likes[0].total_likes
+      result_yesterday = DB.query(sql_yesterday, 
+        beginning: BEGINNING, yesterday: yesterday, user_id: user_id)
+      if result_yesterday[0].total_likes.nil?
+        likes_since_yesterday = 0
+      else
+        likes_since_yesterday = result_yesterday[0].total_likes
+      end
+
+      sql_today = <<~SQL
+        SELECT SUM(like_count) total_likes from posts
+        WHERE created_at BETWEEN :beginning AND :today
+        AND user_id = :user_id
+      SQL
+      result_today = DB.query(sql_today, beginning: BEGINNING, today: today, user_id: user_id)
+      if result_today[0].total_likes.nil?
+        likes_since_today = 0
+      else
+        likes_since_today = result_today[0].total_likes
+      end
+      
+      new_likes = likes_since_today - likes_since_yesterday
+      new_likes
     end
 
     # Calculate the new credit balance of the user based on

@@ -14,4 +14,4 @@ The plugin can also be used to add credits to the credit wallets of all users, a
 - `PUT /credits/rewards` - Rewards the users by adding credits to the credit wallets of all users based on their activity on the platform.
   - Parameters:
     - amount: Amount that will be used in the formula for getting the activity reward. Required.
-    - date: Date that will be used for looking up the user's activity.. Optional, uses `Today - 1` by default.
+    - date: Date that will be used for looking up the user's activity.. Optional, uses `today` as default.
