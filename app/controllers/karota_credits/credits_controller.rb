@@ -59,6 +59,9 @@ module KarotaCredits
     end
 
     # Updates the credit balance of users.
+    # Params:
+    # +user_id+:: User id of the user.
+    # +new_credit+:: The new be credit balance of the user.
     def update_credit_balance(user_id, new_credit)
       UserCustomField
         .where(name: CREDIT_BALANCE_COL, user_id: user_id)
@@ -88,8 +91,10 @@ module KarotaCredits
       ucf_credit_records = get_user_ids_with_credits
       ucf_credit_records.each do |record|
         reward = get_rewards(amount, record[:user_id], date)
-        new_credit_balance = add_rewards_to_credits(record[:user_id], reward)
-        update_credit_balance(record[:user_id], new_credit_balance)
+        unless reward.nil?
+          new_credit_balance = add_rewards_to_credits(record[:user_id], reward)
+          update_credit_balance(record[:user_id], new_credit_balance)
+        end
       end
     end
 
@@ -98,39 +103,62 @@ module KarotaCredits
     # Returns
     # +gained_reward+:: Credit amount the user will get.
     def get_rewards(amount, user_id, date)
-      @post_polarization_score = get_post_polarization_score(user_id)
-      @total_created_posts = get_total_posts(user_id, date)
+      @created_posts = get_created_posts(user_id, date)
+      return if @created_posts.empty?
+      total_created_posts = @created_posts.count
+      posts_polarization_vector = get_post_polarization_vector
+      @post_polarization_score = calculate_post_polarity(posts_polarization_vector)
       @total_followers = get_new_followers(user_id)
       @total_likes_received = get_new_likes_received(user_id, date)
-      gained_reward = (0.5 + amount) * (1 - @post_polarization_score) * @total_created_posts * (@total_followers + @total_likes_received)
+      gained_reward = (0.5 + amount) * (1 - @post_polarization_score) * total_created_posts * (@total_followers + @total_likes_received)
       gained_reward
     end
 
-    # Get the polarity of the post content. 
-    # Returns 0 temporarily while the 'Discourse Reactions' plugin
-    # is not yet implemented.
-    # Params:
-    # +user_id+:: User id of the post creator.
-    def get_post_polarization_score(user_id)
-      # sql = <<~SQL
-      #   SELECT AVG(ABS(like_score)) mean_score from posts
-      #   WHERE user_id = :user_id
-      # SQL
-      # scores = DB.query(sql, user_id: user_id)
-      # return 0 if scores[0].mean_score.nil?
-      # scores[0].mean_score
-      0
-    end
-
-    # Get the total created post of a user on a specific date.
-    def get_total_posts(user_id, date)
+    # Returns id, user_id, like_count, created 
+    # and updated at of posts, 'nil' if none.
+    def get_created_posts(user_id, date)
       sql = <<~SQL
-        SELECT COUNT(*) total_posts from posts
+        SELECT id, user_id, like_count, created_at, updated_at from posts
         WHERE created_at::DATE = :created_at
         AND user_id = :user_id
       SQL
-      total_posts_created = DB.query(sql, created_at: date, user_id: user_id)
-      total_posts_created[0].total_posts
+      created_posts = DB.query(sql, created_at: date, user_id: user_id)
+      created_posts
+    end
+
+    # Calculate the mean of the post polarity vector.
+    # Params:
+    # +vector+:: Array of numerical values, expected values are total
+    #   dislikes/toxic reaction of a post. 
+    def calculate_post_polarity(vector)
+      post_polarity_vector = vector.map { |x| x.abs }
+      sum = post_polarity_vector.sum.to_f
+      count = post_polarity_vector.count.to_f
+      mean = sum / count
+      mean
+    end
+
+    # Gets the toxic polarity of posts.
+    # The data to use the polarity is the total count of 
+    # dislike reactions of the post.
+    def get_post_polarization_vector
+      post_ids = []
+      polarization_vector = []
+      @created_posts.each do |post|
+        post_ids.push(post.id)
+      end 
+
+      sql = <<~SQL
+        SELECT reaction_users_count from discourse_reactions_reactions
+        WHERE post_id IN (:post_ids)
+        AND reaction_value = '-1'
+      SQL
+      result = DB.query(sql, post_ids: post_ids)
+      
+      result.each do |record|
+        polarization_vector.push(record.reaction_users_count)
+      end
+      polarization_vector
     end
 
     # Returns the new followers of the user.
@@ -176,14 +204,14 @@ module KarotaCredits
 
     # Calculate the new credit balance of the user based on
     # gained rewards.
-    def add_rewards_to_credits(user_id, gained_reward)
+    def add_rewards_to_credits(user_id, reward)
       result = UserCustomField.select(:value)
         .where(name: CREDIT_BALANCE_COL, user_id: user_id)
         .first
       current_credit_balance = result.value.to_f
-      new_credit_balance = current_credit_balance + gained_reward
+      new_credit_balance = current_credit_balance + reward
       new_credit_balance = [
-          (new_credit_balance - 1 + (1 - @post_polarization_score) * gained_reward / 2 + 1), 
+          (new_credit_balance - 1 + (1 - @post_polarization_score) * reward / 2 + 1), 
           MAX_CREDIT_BALANCE
         ].min
       new_credit_balance
