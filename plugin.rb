@@ -12,7 +12,7 @@ enabled_site_setting :credit_system_enabled
 load File.expand_path('lib/karota_credits/engine.rb', __dir__)
 
 after_initialize do
-	Discourse::Application.routes.append do
-		mount ::KarotaCredits::Engine, at: 'credits'
-	end
+  Discourse::Application.routes.append do
+    mount ::KarotaCredits::Engine, at: 'credits'
+  end
 end
